@@ -9,8 +9,8 @@ from tkinter import messagebox as msg
 from datetime import datetime as dt
 #import cprint 
 import pandas as pd
-import os
-import subprocess
+import os, json
+from queue import Queue
 
 
 LIGHT_GREEN ="#c8f8ce" #"#bce7c8"
@@ -24,38 +24,33 @@ img = PhotoImage(file="3dLock.png")
 canva.create_image(230, 170,image=img)
 canva.grid(column=1, row=0)
 csv_file ='usersCount.csv'
-rd_pressed = 0
+rd_pressed = False
+initial_press= 0
 max_count = None
+radio_state = False
+
+press_state_queue = Queue()
 
 
 
 #-------------------------------------------------------
 
 ## checks if the current entries already exist
-def entry_doesnt_exist(username, website):
+def entry_doesnt_exist(username_email_input, website):
     website = website.replace("https://", "")
     Site = ""
-    name = ""
+    Email_username = ""
     doesnt_EXIST = True
-    with open("Locker/data.txt", "r") as F:
-        lines = F.readlines()
-        for line in lines:
-            parts = line.split("||")
-            for part in parts:
-                part = part.strip()  
-                if part.startswith("Website:"):
-                    Site = part.split(":")[1].strip()  
-                elif part.startswith("Email/UserName:"):
-                    name = part.split(":")[1].strip()  
-                    #print(f"name : {name}, username: {username}")       
-                    #print(f"website: {website}, Site: {Site}")
-            if username == name and website == Site:
-                alrdy_exst.config(text="user / email & website already exist ")
+    with open("Locker/data.jdon", "r") as F:
+        pass_details = json.load(F)
+        for details in pass_details:
+            Site = details["website"]
+            Email_username = details["email_or_username"]
+            if username_email_input == Email_username and website == Site:
+                alrdy_exst.config(text="you already have a recored of these entries ")
                 doesnt_EXIST = False
-                #return doesnt_EXIST
                 break
-                alrdy_exst.config(text="")
-    #subprocess.run([batch_file_path, after_COMMAND])
+    
         return doesnt_EXIST
 
 #-----------------------------------------------------
@@ -120,11 +115,11 @@ def save_inpt():
     else:
         is_k = msg.showinfo(title=WBSITE, message=f"These are the detailed Entered : \n 💠Email / UserName : {USRNAME} \n 💠Password : {PASSWD} \n Is it K to save ?"  )
         if is_k:
-            if entry_doesnt_exist(website=WBSITE, username=USRNAME):
+            if entry_doesnt_exist(website=WBSITE, username_email_input=USRNAME):
                 date_time = dt.now()
                 TIME = date_time.strftime("%H:%M") #date("%Y-%m-%d") Time ("%H:%M:%S")
                 DATE = date_time.strftime("%Y-%m-%d")
-                with open("Locker/data.txt", "a") as f:
+                with open("Locker/data.json", "a") as f:
                     f.writelines(f"Date: {DATE} Time: {TIME}  ---|| Website: {WBSITE} || Email/UserName: {USRNAME} || pass: {PASSWD} \n")
             
                 update_count(usr_name.get())
@@ -147,26 +142,62 @@ def save_inpt():
 
 
 def show_hide_radio():
-    global rd_pressed
-    rd_pressed += 1
-    rd = radio_state.get()
-    print(rd)
- 
-    if rd_pressed % 2 == 0:
-        radio_state.set(0)
-        passwd.config(show="#")
-    else:
-        #radio_state.set(1)
-        passwd.config(show="")
+    rd_state = None
+    global initial_press, rd_pressed
+    initial_press += 1
+    # rd_pressed = True if not rd_pressed else False
+    # rd_state = radio_state.get()
+    # set(1) means no show 
+    #the default is show
+    #when I press for the first time it should put the button in a noshow state set(1)
+    #when the dot is present means that it's in a 0 state 
+    #when pressing the generate password button the state changes to 0 (dot on)
+    #I need to add to the queue something that make the initail condition do the opposite which is set(1) 
+    try:
+        if initial_press > 1:
+            rd_state = press_state_queue.get()
+            print("summoned the last queue")
+            print(f"last queue: {rd_state}")
+        
+        if  rd_state  :
+            radio_state.set(0)
+            press_state_queue.put(False)
+            print(f"set = 0 : {radio_state.get()}")
+            passwd.config(show="")
+        else:
+            press_state_queue.put(True)
+            radio_state.set(1)
+            print("adding to the true queue")
+            
+            print(f"set = 1 : {radio_state.get()}")
+            passwd.config(show="#")
+    except Exception as e:
+        print(f"[!] Queue error: {e}")
+    
+    # if rd_pressed  :
+    #     radio_state.set(1)
+    #     passwd.config(show="#")
+    # else:
+    #     radio_state.set(0)
+    #     passwd.config(show="")
 
+#-------------------------------------------------
+        
+## generates and adds the generated password to the input field
+        
 def GeneratePassword():
     Passwd = G()
     passwd.config(show="")
     passwd.delete(0, END)
-    passwd.insert(0, Passwd)
-
-
-
+    passwd.insert(0, Passwd) 
+    rd_state = radio_state.get()
+    print(rd_state)
+    press_state_queue.put(False)
+    if rd_state:
+        
+        radio_state.set(0)
+        print(f"set = 0 : {radio_state.get()}")
+        passwd.config(show="")
 
 #-------------------------------------------------
     
@@ -211,8 +242,9 @@ add_btn = Button(text="Add", width=10, bg = GREEN, command=save_inpt)
 add_btn.place( x=200, y=460)
 
 radio_state = IntVar()
-shw_hide_pass = Radiobutton(text="show",value=1, variable= radio_state, command=show_hide_radio, bg=LIGHT_GREEN, font=("Arial", 7, "bold"))
+shw_hide_pass = Radiobutton(text="show",value=0, variable= radio_state, command=show_hide_radio, bg=LIGHT_GREEN, font=("Arial", 7, "bold"))
 shw_hide_pass.place(x=335, y=430)
+
 
 
 window.mainloop()
